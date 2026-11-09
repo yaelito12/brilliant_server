@@ -1,0 +1,11 @@
+name: brilliant_reglas
+description: Reglas del juego Brilliant compartidas por la app y el servidor.
+publish_to: none
+version: 1.0.0
+
+environment:
+  sdk: ^3.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.26.0
