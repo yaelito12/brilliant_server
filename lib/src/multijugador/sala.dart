@@ -10,7 +10,7 @@ class JugadorSala {
   final String id;
   final String nametag;
 
-  /// Número del mapa (nivel oficial) que eligió este jugador.
+  /// Número del mapa (nivel oficial). Es el mismo para toda la sala.
   int nivel;
   bool listo = false;
   bool conectado = true;
@@ -58,6 +58,10 @@ class Sala {
 
   bool get llena => jugadores.length >= maxJugadores;
 
+  /// Mapa de la sala: todos juegan el mismo (el que eligió el anfitrión,
+  /// que es el primero de [jugadores]).
+  int get nivel => jugadores.first.nivel;
+
   /// true si ya se puede empezar: suficientes jugadores, todos conectados y listos.
   bool get todosListos =>
       jugadores.length >= minJugadores &&
@@ -68,6 +72,7 @@ class Sala {
     'estado': estado.name,
     'minJugadores': minJugadores,
     'maxJugadores': maxJugadores,
+    if (jugadores.isNotEmpty) 'nivel': nivel,
     'jugadores': [for (final j in jugadores) j.toJson()],
   };
 }

@@ -19,8 +19,8 @@ Estado: **completo** (servidor y app: lobby, partida, desconexiones y resultados
 | tipo | campos | qué hace |
 |---|---|---|
 | `crear_sala` | `nivel` (1-4) | Crea una sala con código y entra en ella. |
-| `unirse` | `codigo`, `nivel` (opcional) | Entra a una sala (el código no distingue mayúsculas ni espacios). Sin `nivel` se usa el mapa de quien creó la sala. |
-| `elegir_mapa` | `nivel` | Cambia el mapa propio. Quita el "listo". |
+| `unirse` | `codigo` | Entra a una sala (el código no distingue mayúsculas ni espacios) y juega el mapa de la sala. Si manda `nivel`, se ignora. |
+| `elegir_mapa` | `nivel` | Solo el anfitrión: cambia el mapa de la sala para todos y quita el "listo" de todos. |
 | `listo` | `listo` (bool) | Marca o desmarca "listo". |
 | `salir` | — | Sale de la sala. Responde `{"tipo":"saliste"}`. |
 | `ping` | — | Responde `{"tipo":"pong"}` (además del ping propio de WebSocket). |
@@ -43,7 +43,7 @@ Estado: **completo** (servidor y app: lobby, partida, desconexiones y resultados
 ```json
 {
   "codigo": "K7M2QX", "estado": "lobby" | "jugando",
-  "minJugadores": 2, "maxJugadores": 6,
+  "minJugadores": 2, "maxJugadores": 6, "nivel": 2,
   "jugadores": [{"id": "...", "nametag": "Ana", "nivel": 2, "listo": true, "conectado": true}]
 }
 ```
@@ -72,12 +72,13 @@ tiempo), `jugada` (con `puntosGanados` y `completo`), `paso`, `desconectado`, `r
 `concedio`, `abandono`.
 
 Códigos de error: `mapa_invalido`, `sala_no_encontrada`, `sala_llena`, `partida_en_curso`,
-`ya_en_sala`, `no_en_sala`, `mensaje_invalido`, `mensaje_desconocido`, `sin_partida`,
+`ya_en_sala`, `no_en_sala`, `solo_anfitrion`, `mensaje_invalido`, `mensaje_desconocido`, `sin_partida`,
 `no_es_momento`, `iniciales_invalidos`, `jugada_invalida`.
 
 ## Reglas del lobby
 
-- Cada jugador elige **su propio mapa** (pueden ser distintos).
+- **Todos juegan el mismo mapa**: lo elige quien crea la sala (el anfitrión, el primero de
+  `jugadores`) y solo él lo puede cambiar. Si el anfitrión sale, el siguiente pasa a serlo.
 - Entre **2 y 6** jugadores. El 7.º recibe `sala_llena`.
 - La partida empieza sola cuando hay al menos 2 jugadores, **todos conectados y con "listo"**.
   Si el único que faltaba sale de la sala, los demás empiezan.
@@ -86,7 +87,7 @@ Códigos de error: `mapa_invalido`, `sala_no_encontrada`, `sala_llena`, `partida
 
 ## Reglas de la partida
 
-- **Cada jugador tiene su propio tablero** (su mapa) y **todos usan los mismos dados**.
+- **Cada jugador tiene su propio tablero** (del mismo mapa) y **todos usan los mismos dados**.
   Los tira el servidor (`Random.secure`) y nunca manda una semilla: nadie puede saber los próximos.
 - **Números iniciales:** 90 s (`INITIAL_VALUES_SECONDS`) para poner los 6. Si no, el servidor pone
   números válidos al azar.

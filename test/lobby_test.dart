@@ -167,7 +167,7 @@ void main() {
   });
 
   group('lobby', () {
-    test('unirse solo con el código: juega el mapa de quien creó la sala', () async {
+    test('todos juegan el mapa de quien creó la sala', () async {
       final ana = await Cliente.de('Ana');
       final beto = await Cliente.de('Beto');
       ana.enviar({'tipo': 'crear_sala', 'nivel': 3});
@@ -175,12 +175,18 @@ void main() {
 
       beto.enviar({'tipo': 'unirse', 'codigo': codigo});
       final s = await beto.esperarSala((s) => jugadores(s).length == 2);
+      expect(s['nivel'], 3);
       expect(jugador(s, 'Beto')['nivel'], 3);
 
-      // Un mapa inválido sí es un error (no se ignora).
+      // El "nivel" de quien se une se ignora (aunque sea otro o inválido).
       final carla = await Cliente.de('Carla');
       carla.enviar({'tipo': 'unirse', 'codigo': codigo, 'nivel': 99});
-      await carla.esperarError('mapa_invalido');
+      final s2 = await carla.esperarSala((s) => jugadores(s).length == 3);
+      expect(jugador(s2, 'Carla')['nivel'], 3);
+
+      // Solo el anfitrión cambia el mapa.
+      beto.enviar({'tipo': 'elegir_mapa', 'nivel': 2});
+      await beto.esperarError('solo_anfitrion');
     });
 
     test('crear sala y unirse con el código (sin importar mayúsculas)', () async {
@@ -205,7 +211,7 @@ void main() {
       beto.enviar({'tipo': 'unirse', 'codigo': ' ${codigo.toLowerCase()} ', 'nivel': 3});
       for (final c in [ana, beto]) {
         final s = await c.esperarSala((s) => jugadores(s).length == 2);
-        expect(jugador(s, 'Beto')['nivel'], 3);
+        expect(jugador(s, 'Beto')['nivel'], 2);
         expect(jugador(s, 'Ana')['nivel'], 2);
       }
     });
@@ -258,10 +264,12 @@ void main() {
       beto.enviar({'tipo': 'unirse', 'codigo': codigo, 'nivel': 4});
       await beto.esperarSala((s) => jugadores(s).length == 2);
 
-      // Cambiar de mapa quita el "listo".
+      // Cambiar de mapa lo cambia para todos y quita el "listo" de todos.
       ana.enviar({'tipo': 'elegir_mapa', 'nivel': 3});
-      final s = await ana.esperarSala((s) => jugador(s, 'Ana')['nivel'] == 3);
+      final s = await ana.esperarSala((s) => s['nivel'] == 3);
+      expect(jugador(s, 'Beto')['nivel'], 3);
       expect(jugador(s, 'Ana')['listo'], isFalse);
+      expect(jugador(s, 'Beto')['listo'], isFalse);
 
       ana.enviar({'tipo': 'listo', 'listo': true});
       beto.enviar({'tipo': 'listo', 'listo': true});
