@@ -108,6 +108,14 @@ class Partida {
   Timer? _reloj;
   DateTime? _limite;
 
+  /// Cuánto se espera a quien pierde la conexión (lo dice el lobby al avisar
+  /// la desconexión). La ronda se estira ese rato en vez de pasarle el turno.
+  Duration _esperaPorDesconexion = const Duration(seconds: 10);
+
+  /// Veces que se estiró esta ronda esperando a alguien desconectado (por si
+  /// el lobby nunca lo saca, la partida no se queda congelada para siempre).
+  int _prorrogas = 0;
+
   /// Cuántos jugadores completaron cada zona en rondas anteriores.
   final _completadasAntes = <String, int>{};
 
@@ -213,12 +221,25 @@ class Partida {
       throw ErrorProtocolo('jugada_invalida', 'Esa jugada no es válida con estos dados.');
     }
     final antes = j.puntos;
+    final zonasAntes = Set.of(j.lugares.keys);
     _colocar(j, destino!, numero);
     j.yaJugo = true;
+    // Zonas que esta jugada dejó completas, con el lugar y los puntos que
+    // dieron (para que la app avise a todos y tache los puntos ganados).
+    final zonas = [
+      for (final MapEntry(key: id, value: lugar) in j.lugares.entries)
+        if (!zonasAntes.contains(id))
+          {
+            'zona': id,
+            'lugar': lugar,
+            'puntos': j.tablero.zonas[id]!.tipo.puntuaciones[lugar] ?? 0,
+          },
+    ];
     _emitir(evento: {
       'tipo': 'jugada',
       'nametag': j.nametag,
       'puntosGanados': j.puntos - antes,
+      if (zonas.isNotEmpty) 'zonas': zonas,
       if (j.completo) 'completo': true,
     });
     _quizasAvanzar();
@@ -237,16 +258,22 @@ class Partida {
   // Conexión, rendición y abandono (los llama el lobby)
   // ---------------------------------------------------------------------------
 
-  void cambiarConexion(String userId, bool conectado) {
+  /// [graciaSegundos] (al desconectarse): cuántos segundos tiene para volver
+  /// antes de quedar fuera; se manda en el evento para que la app lo avise.
+  void cambiarConexion(String userId, bool conectado, {int? graciaSegundos}) {
     final j = jugador(userId);
     if (j == null || j.conectado == conectado || fase == FasePartida.terminada) return;
     j.conectado = conectado;
+    if (!conectado && graciaSegundos != null) {
+      _esperaPorDesconexion = Duration(seconds: graciaSegundos);
+    }
     _emitir(evento: {
       'tipo': conectado ? 'reconectado' : 'desconectado',
       'nametag': j.nametag,
+      if (!conectado && graciaSegundos != null) 'graciaSegundos': graciaSegundos,
     });
-    // Un jugador caído no frena a los demás.
-    if (!conectado) _quizasAvanzar();
+    // Al reconectarse puede que ya hayan jugado todos los demás.
+    if (conectado) _quizasAvanzar();
   }
 
   /// El jugador se rinde (o sale de la sala).
@@ -274,11 +301,14 @@ class Partida {
 
   /// Si ya jugaron todos los que pueden, pasa a lo siguiente. Si no queda
   /// nadie conectado se espera al reloj (para no quemar rondas de golpe).
+  ///
+  /// Un jugador desconectado pero todavía en juego también frena la ronda:
+  /// no se le pasan los turnos solos. Tiene unos segundos de gracia para
+  /// volver; si no vuelve, el lobby lo saca (abandono) y la ronda sigue.
   void _quizasAvanzar() {
     if (fase == FasePartida.terminada) return;
-    final conectados = _activos.where((j) => j.conectado);
-    if (conectados.isEmpty) return;
-    final faltan = conectados.where((j) => !j.yaJugo && !j.completo);
+    if (_activos.where((j) => j.conectado).isEmpty) return;
+    final faltan = _activos.where((j) => !j.yaJugo && !j.completo);
     if (faltan.isNotEmpty) return;
     fase == FasePartida.iniciales ? _alVencerIniciales() : _cerrarRonda();
   }
@@ -294,6 +324,16 @@ class Partida {
 
   void _alVencerTurno() {
     if (fase != FasePartida.jugando) return;
+    // A nadie se le pasa el turno por haberse salido: mientras se espere a
+    // alguien que perdió la conexión, la ronda se estira. El lobby lo saca al
+    // vencer su tiempo de gracia (abandono) y entonces la ronda sigue sin él.
+    final esperados = _activos.where((j) => !j.conectado && !j.yaJugo && !j.completo);
+    if (esperados.isNotEmpty && _prorrogas < 3) {
+      _prorrogas++;
+      _programar(_esperaPorDesconexion + const Duration(seconds: 2), _alVencerTurno);
+      _emitir();
+      return;
+    }
     final pasan = _activos.where((j) => !j.yaJugo && !j.completo).toList();
     for (final j in pasan) {
       j.yaJugo = true;
@@ -317,6 +357,7 @@ class Partida {
 
   void _nuevaRonda({List<String> pasaronPorTiempo = const []}) {
     ronda++;
+    _prorrogas = 0;
     dados = [_random.nextInt(6) + 1, _random.nextInt(6) + 1];
     for (final j in jugadores) {
       j.yaJugo = false;

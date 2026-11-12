@@ -43,8 +43,10 @@ Future<List<String>> _ipsLocales() async {
 }
 
 /// Muestra dónde abrir el juego: en esta PC y desde otras PCs de la red.
-/// [puertoJuego] es el puerto donde se sirve la app web (GAME_PORT, 5000).
-void _imprimirLinks(List<String> ips, int puertoJuego) {
+/// [puertoJuego] es el puerto donde se sirve la app web (GAME_PORT, 5000) y
+/// [puertoApi] el de este servidor, que es lo que se escribe en la app de
+/// Android (pantalla "Servidor").
+void _imprimirLinks(List<String> ips, int puertoJuego, int puertoApi) {
   final linea = '=' * 60;
   print('');
   print(linea);
@@ -55,6 +57,11 @@ void _imprimirLinks(List<String> ips, int puertoJuego) {
     print('  Otros jugadores (misma red Wi-Fi o cable):');
     for (final ip in ips) {
       print('                      http://$ip:$puertoJuego');
+    }
+    print('');
+    print('  En la app de Android, en "Servidor", escribe:');
+    for (final ip in ips) {
+      print('                      $ip:$puertoApi');
     }
   }
   print(linea);
@@ -106,7 +113,7 @@ Future<void> main() async {
     poweredByHeader: null, // no anunciar la tecnología del servidor
   );
   print('Servidor Brilliant escuchando en el puerto ${server.port}');
-  _imprimirLinks(ips, puertoJuego);
+  _imprimirLinks(ips, puertoJuego, config.puerto);
   if (!config.requireHttps) {
     print('AVISO: HTTPS no es obligatorio. Úsalo solo en desarrollo.');
   }

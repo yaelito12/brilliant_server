@@ -164,15 +164,53 @@ void main() {
       expect((ronda2['evento'] as Map)['pasaronPorTiempo'], ['beto']);
     });
 
-    test('un jugador desconectado no frena a los demás', () {
-      m.partida.cambiarConexion('beto', false);
-      expect(m.ultimoEvento, {'tipo': 'desconectado', 'nametag': 'beto'});
+    test('ni el reloj le pasa el turno al desconectado: la ronda se estira', () async {
+      m.partida.cambiarConexion('beto', false, graciaSegundos: 10);
       m.enviar('ana', 'pasar');
-      expect(m.partida.ronda, 2);
+      // Se vence el tiempo de la ronda (80 ms) mientras se espera a beto.
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(m.partida.ronda, 1, reason: 'la ronda no se cierra sin beto');
+      expect(m.j('beto').yaJugo, isFalse, reason: 'no se le pasa el turno');
+      expect(
+        m.mensajes.every((x) => (x['evento'] as Map?)?['pasaronPorTiempo'] == null),
+        isTrue,
+      );
 
+      // Al volver, la ronda sigue su curso normal.
       m.partida.cambiarConexion('beto', true);
       m.enviar('beto', 'pasar');
-      expect(m.partida.ronda, 2, reason: 'ahora falta ana');
+      expect(m.partida.ronda, 2);
+    });
+
+    test('la ronda espera al desconectado: sus turnos no se pasan solos', () {
+      m.partida.cambiarConexion('beto', false, graciaSegundos: 10);
+      expect(m.ultimoEvento, {
+        'tipo': 'desconectado',
+        'nametag': 'beto',
+        'graciaSegundos': 10,
+      });
+      m.enviar('ana', 'pasar');
+      expect(m.partida.ronda, 1, reason: 'se espera a beto');
+
+      m.partida.cambiarConexion('beto', true);
+      expect(m.ultimoEvento, {'tipo': 'reconectado', 'nametag': 'beto'});
+      m.enviar('beto', 'pasar');
+      expect(m.partida.ronda, 2, reason: 'con beto de vuelta la ronda cierra');
+    });
+
+    test('si el desconectado no vuelve (abandono), la ronda sigue sin él', () {
+      m = Mesa(['ana', 'beto', 'carla']);
+      for (final n in ['ana', 'beto', 'carla']) {
+        m.enviar(n, 'iniciales', {'valores': iniciales1});
+      }
+      m.partida.cambiarConexion('carla', false, graciaSegundos: 10);
+      m.enviar('ana', 'pasar');
+      m.enviar('beto', 'pasar');
+      expect(m.partida.ronda, 1, reason: 'se espera a carla');
+
+      m.partida.abandonar('carla'); // el lobby la saca al vencer la gracia
+      expect(m.partida.ronda, 2, reason: 'ya nadie la espera');
+      expect(m.partida.fase, FasePartida.jugando);
     });
 
     test('si no queda nadie conectado no se queman rondas', () {
@@ -204,6 +242,9 @@ void main() {
       // Ronda 1: ana completa "b" con el 1; beto pasa.
       m.enviar('ana', 'jugada', {'ancla': [0, 5], 'destino': [0, 6]});
       expect(m.ultimoEvento!['puntosGanados'], 4);
+      expect(m.ultimoEvento!['zonas'], [
+        {'zona': 'b', 'lugar': 1, 'puntos': 4},
+      ]);
       m.enviar('beto', 'pasar');
 
       // Ronda 2: beto completa "b" después: 2.º lugar.

@@ -40,6 +40,10 @@ class Sala {
   /// En orden de llegada.
   final List<JugadorSala> jugadores = [];
 
+  /// Usuarios que abandonaron una partida de esta sala (se desconectaron y
+  /// no volvieron a tiempo): ya no pueden volver a entrar.
+  final Set<String> vetados = {};
+
   /// La partida en curso (solo con [estado] == jugando).
   Partida? partida;
 

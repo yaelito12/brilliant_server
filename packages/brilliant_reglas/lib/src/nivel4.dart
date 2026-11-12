@@ -7,7 +7,7 @@ import 'tipo.dart';
 final Set<Coordenada> casillasInicialesNivel4 = {
   Coordenada(0, 4), // Fila 0, Col 4 - Zona Naranja 4-6
   Coordenada(2, 2), // Fila 2, Col 2 - Zona Morada
-  Coordenada(2, 5), // Fila 2, Col 5 - Zona Roja
+  Coordenada(2, 5), // Fila 2, Col 5 - Zona Roja (arriba derecha)
   Coordenada(3, 0), // Fila 3, Col 0 - Zona Amarilla
   Coordenada(5, 4), // Fila 5, Col 4 - Zona Azul
   Coordenada(6, 1), // Fila 6, Col 1 - Zona Naranja 1-3
@@ -17,7 +17,8 @@ final Set<Coordenada> casillasInicialesNivel4 = {
 ///
 /// La fila de arriba es una zona naranja 4-6 y la de abajo una naranja 1-3.
 /// Las casillas amarillas, azules y verdes sueltas forman una zona por
-/// color; las rojas forman 2 zonas (izquierda y derecha).
+/// color; cada bloque rojo es una zona independiente: 4 zonas rojas
+/// (arriba izquierda, arriba derecha, abajo izquierda y abajo derecha).
 Tablero construirTableroNivel4() {
   return tableroDesdeFilas(
     {
@@ -29,14 +30,16 @@ Tablero construirTableroNivel4() {
       'mo': TipoMorado(puntos(7, 5, 3)),
       'ro1': TipoRojo(puntos(6, 4, 2)),
       'ro2': TipoRojo(puntos(6, 4, 2)),
+      'ro3': TipoRojo(puntos(6, 4, 2)),
+      'ro4': TipoRojo(puntos(6, 4, 2)),
     },
     [
       ['na', 'na', 'na', 'na', 'na', 'na', 'na'],
       ['am', 'ro1', 'az', 've', 'az', 'ro2', 'am'],
       ['ro1', 'ro1', 'mo', 'mo', 'mo', 'ro2', 'ro2'],
       ['am', 've', 'az', 'mo', 'az', 've', 'am'],
-      ['ro1', 'ro1', 'mo', 'mo', 'mo', 'ro2', 'ro2'],
-      ['am', 'ro1', 'az', 've', 'az', 'ro2', 'am'],
+      ['ro3', 'ro3', 'mo', 'mo', 'mo', 'ro4', 'ro4'],
+      ['am', 'ro3', 'az', 've', 'az', 'ro4', 'am'],
       ['nb', 'nb', 'nb', 'nb', 'nb', 'nb', 'nb'],
     ],
   );
@@ -46,6 +49,6 @@ final Nivel nivel4 = Nivel(
   numero: 4,
   construirTablero: construirTableroNivel4,
   casillasIniciales: casillasInicialesNivel4,
-  indicadoresIzquierda: ['mo', 'az', 'ro1', 'nb'],
-  indicadoresDerecha: ['na', 'ro2', 'am', 've'],
+  indicadoresIzquierda: ['mo', 'az', 'ro1', 'ro3', 'nb'],
+  indicadoresDerecha: ['na', 'ro2', 'ro4', 'am', 've'],
 );

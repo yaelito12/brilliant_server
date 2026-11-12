@@ -117,6 +117,7 @@ void main() {
     lobby = Lobby(
       config: const ConfigMultijugador(
         graciaReconexion: gracia,
+        graciaReconexionPartida: gracia,
         tiempoAuth: Duration(milliseconds: 400),
         maxMensajesPorSegundo: 20,
       ),
@@ -501,30 +502,32 @@ void partidaPorWebSocket() {
       await ana.esperarError('sin_partida');
     });
 
-    test('se cae en plena partida: no frena a nadie y al volver sigue donde iba', () async {
+    test('se cae en plena partida: la ronda lo espera y al volver sigue donde iba', () async {
       final ana = await Cliente.de('Ana');
       var beto = await Cliente.de('Beto');
       final codigo = await partidaEnRonda1([ana, beto]);
 
       await beto.cerrar();
-      await esperarPartida(ana, (p) => jugadorP(p, 'Beto')['conectado'] == false);
+      final caido = await esperarPartida(ana, (p) => jugadorP(p, 'Beto')['conectado'] == false);
+      expect(caido['ronda'], 1);
 
+      // Ana juega, pero la ronda no avanza sola: espera a Beto.
       ana.enviar({'tipo': 'pasar'});
-      await esperarPartida(ana, (p) => p['ronda'] == 2, que: 'avanza sin Beto');
+      await esperarPartida(ana, (p) => jugadorP(p, 'Ana')['yaJugo'] == true);
+      expect(lobby.sala(codigo)!.partida!.ronda, 1, reason: 'la ronda espera a Beto');
 
       beto = await Cliente.abrir();
       beto.enviar({'tipo': 'auth', 'token': await token('Beto')});
       final auth = await beto.esperar('autenticado');
       expect(auth['sala']['estado'], 'jugando');
       final estado = await esperarPartida(beto, (p) => jugadorP(p, 'Beto')['conectado'] == true);
-      expect(estado['ronda'], 2);
+      expect(estado['ronda'], 1);
       expect(jugadorP(estado, 'Beto')['celdas'], hasLength(6), reason: 'conserva su tablero');
       expect(lobby.sala(codigo)!.partida!.jugador(lobby.sala(codigo)!.jugadores[1].id)!.activo, isTrue);
 
-      // Puede seguir jugando.
+      // Al jugar Beto, la ronda por fin cierra.
       beto.enviar({'tipo': 'pasar'});
-      ana.enviar({'tipo': 'pasar'});
-      await esperarPartida(beto, (p) => p['ronda'] == 3, que: 'ronda 3');
+      await esperarPartida(beto, (p) => p['ronda'] == 2, que: 'ronda 2');
     });
 
     test('si no vuelve a tiempo cuenta como abandono y gana el otro', () async {
@@ -543,6 +546,11 @@ void partidaPorWebSocket() {
       final s = await ana.esperarSala((s) => jugadores(s).length == 1);
       expect(s['estado'], 'lobby');
       expect(lobby.sala(codigo)!.jugadores.single.nametag, 'Ana');
+
+      // El que abandonó queda vetado: ya no puede volver a entrar a la sala.
+      final beto2 = await Cliente.de('Beto');
+      beto2.enviar({'tipo': 'unirse', 'codigo': codigo});
+      await beto2.esperarError('vetado');
     });
 
     test('con 3 jugadores, si uno abandona los demás siguen', () async {

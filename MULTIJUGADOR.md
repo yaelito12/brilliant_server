@@ -49,6 +49,7 @@ Estado: **completo** (servidor y app: lobby, partida, desconexiones y resultados
 ```
 
 `<evento>` (para mostrar avisos): `{"tipo": "creada"|"unido"|"salio"|"desconectado"|"reconectado"|"abandono", "nametag": "..."}`.
+El evento `desconectado` trae además `graciaSegundos`: cuántos segundos tiene para volver.
 
 `<partida>`:
 ```json
@@ -68,12 +69,14 @@ Estado: **completo** (servidor y app: lobby, partida, desconexiones y resultados
 `resultados`: `[{"id","nametag","nivel","puntos","estado","posicion"}]`, ya ordenados.
 
 Eventos de partida: `iniciales`, `ronda` (con `pasaronPorTiempo` si a alguien se le acabó el
-tiempo), `jugada` (con `puntosGanados` y `completo`), `paso`, `desconectado`, `reconectado`,
-`concedio`, `abandono`.
+tiempo), `jugada` (con `puntosGanados`, `completo` y `zonas`: las zonas que esa jugada dejó
+completas, cada una como `{"zona","lugar","puntos"}`), `paso`, `desconectado` (con
+`graciaSegundos`), `reconectado`, `concedio`, `abandono`.
 
 Códigos de error: `mapa_invalido`, `sala_no_encontrada`, `sala_llena`, `partida_en_curso`,
 `ya_en_sala`, `no_en_sala`, `solo_anfitrion`, `mensaje_invalido`, `mensaje_desconocido`, `sin_partida`,
-`no_es_momento`, `iniciales_invalidos`, `jugada_invalida`.
+`no_es_momento`, `iniciales_invalidos`, `jugada_invalida`, `vetado` (abandonó una partida de esa
+sala y ya no puede volver a entrar).
 
 ## Reglas del lobby
 
@@ -108,12 +111,12 @@ Códigos de error: `mapa_invalido`, `sala_no_encontrada`, `sala_llena`, `partida
 
 | Situación | Qué pasa |
 |---|---|
-| Se cae la conexión (Wi-Fi, app cerrada, sin batería) | El servidor lo detecta (cierre o ping de WebSocket sin respuesta cada 15 s). El jugador queda `conectado: false` y **pierde el "listo"**, así nadie empieza con un jugador caído. Los demás reciben el evento `desconectado`. |
-| Vuelve antes de 30 s (`RECONNECT_GRACE_SECONDS`) | Al autenticarse recibe su sala en `autenticado.sala` y los demás reciben `reconectado`. |
+| Se cae la conexión (Wi-Fi, app cerrada, sin batería) | El servidor lo detecta (cierre o ping de WebSocket sin respuesta cada 15 s). El jugador queda `conectado: false` y **pierde el "listo"**, así nadie empieza con un jugador caído. Los demás reciben el evento `desconectado` (con `graciaSegundos`). |
+| Vuelve antes de 30 s (`RECONNECT_GRACE_SECONDS`, en el lobby) | Al autenticarse recibe su sala en `autenticado.sala` y los demás reciben `reconectado`. |
 | No vuelve a tiempo | Sale de la sala (evento `abandono`). |
-| Se cae **en plena partida** | No frena a nadie: sus rondas se pasan solas. Si no queda nadie conectado, las rondas avanzan solo por tiempo. |
-| Vuelve a la partida | Recibe `autenticado` y un `partida` con su tablero, los dados de la ronda y si ya jugó; sigue jugando. |
-| No vuelve a la partida a tiempo | Cuenta como **abandono**: queda al final de la clasificación. Si solo queda un jugador, gana. |
+| Se cae **en plena partida** | La ronda **lo espera**: a nadie se le pasan los turnos solos. Tiene 10 s (`RECONNECT_GRACE_GAME_SECONDS`) para volver. Si no queda nadie conectado, las rondas avanzan solo por tiempo. |
+| Vuelve a la partida (antes de 10 s) | Recibe `autenticado` y un `partida` con su tablero, los dados de la ronda y si ya jugó; sigue jugando. |
+| No vuelve a la partida a tiempo | Cuenta como **abandono**: pierde, queda al final de la clasificación y **queda vetado de la sala** (error `vetado` si intenta volver a unirse). Si solo queda un jugador, gana. |
 | Se reinicia el servidor | Las salas y partidas viven en memoria y se pierden (las cuentas no). |
 | Abre la cuenta en otra conexión | La vieja recibe el error `sesion_reemplazada` y se cierra con código 4002; la nueva conserva la sala. |
 | Intenta entrar con su cuenta en **otro dispositivo** | No se puede mientras esta conexión esté abierta (login 409 `sesion_activa`). Si cierra sesión o borra la cuenta, esta conexión recibe el error `sesion_cerrada` y el cierre 4004. |

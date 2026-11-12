@@ -20,8 +20,13 @@ class ConfigMultijugador {
   final int maxJugadores;
 
   /// Tiempo que se guarda el lugar de un jugador desconectado antes de
-  /// sacarlo de la sala.
+  /// sacarlo de la sala (estando en el lobby).
   final Duration graciaReconexion;
+
+  /// Tiempo para volver cuando la desconexión pasa en plena partida. Es más
+  /// corto: los demás esperan sin jugar mientras tanto. Si no vuelve, pierde
+  /// (abandono) y ya no puede volver a entrar a esa sala.
+  final Duration graciaReconexionPartida;
 
   /// Tiempo para mandar el mensaje `auth` después de conectarse.
   final Duration tiempoAuth;
@@ -41,6 +46,7 @@ class ConfigMultijugador {
     this.minJugadores = 2,
     this.maxJugadores = 6,
     this.graciaReconexion = const Duration(seconds: 30),
+    this.graciaReconexionPartida = const Duration(seconds: 10),
     this.tiempoAuth = const Duration(seconds: 10),
     this.intervaloPing = const Duration(seconds: 15),
     this.maxBytesMensaje = 4096,
@@ -56,6 +62,8 @@ class ConfigMultijugador {
 
     return ConfigMultijugador(
       graciaReconexion: Duration(seconds: valor('RECONNECT_GRACE_SECONDS', 30)),
+      graciaReconexionPartida:
+          Duration(seconds: valor('RECONNECT_GRACE_GAME_SECONDS', 10)),
       partida: ConfigPartida(
         tiempoIniciales: Duration(seconds: valor('INITIAL_VALUES_SECONDS', 90)),
         tiempoTurno: Duration(seconds: valor('TURN_SECONDS', 60)),
@@ -135,15 +143,27 @@ class Lobby {
 
     j.conectado = false;
     j.listo = false; // nadie empieza con un jugador caído
+    // En plena partida la gracia es más corta: los demás lo están esperando.
+    final enPartida = sala.partida?.jugador(u.id)?.activo ?? false;
+    final gracia = enPartida ? config.graciaReconexionPartida : config.graciaReconexion;
     j.temporizadorSalida?.cancel();
-    j.temporizadorSalida = Timer(config.graciaReconexion, () {
+    j.temporizadorSalida = Timer(gracia, () {
       if (!j.conectado && identical(_salaDe[u.id], sala)) {
+        if (sala.partida?.jugador(u.id)?.activo ?? false) {
+          // No volvió a tiempo en plena partida: pierde y queda vetado de
+          // la sala (ya no puede volver a entrar, ni para la revancha).
+          sala.vetados.add(u.id);
+        }
         sala.partida?.abandonar(u.id); // en partida: cuenta como abandono
         _quitar(sala, j, motivo: 'abandono');
       }
     });
-    _difundir(sala, evento: {'tipo': 'desconectado', 'nametag': j.nametag});
-    sala.partida?.cambiarConexion(u.id, false);
+    _difundir(sala, evento: {
+      'tipo': 'desconectado',
+      'nametag': j.nametag,
+      'graciaSegundos': gracia.inSeconds,
+    });
+    sala.partida?.cambiarConexion(u.id, false, graciaSegundos: gracia.inSeconds);
   }
 
   /// Procesa un mensaje del cliente. Los errores de negocio se le contestan
@@ -232,6 +252,12 @@ class Lobby {
     final sala = _salas[codigo];
     if (sala == null) {
       throw ErrorProtocolo('sala_no_encontrada', 'No existe una sala con ese código.');
+    }
+    if (sala.vetados.contains(u.id)) {
+      throw ErrorProtocolo(
+        'vetado',
+        'Abandonaste una partida de esta sala: ya no puedes volver a entrar.',
+      );
     }
     if (sala.estado != EstadoSala.lobby) {
       throw ErrorProtocolo('partida_en_curso', 'Esa partida ya empezó.');
